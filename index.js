@@ -12,26 +12,32 @@ app.get("/health", (req, res) => {
 
 app.post("/reports", async (req, res) => {
   try {
-    console.log("1. Starting...");
-    const created_at = new Date().toISOString();
+    const force = req.body?.force === true;
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
+    if (!force) {
+      const existing = db.prepare(
+        "SELECT * FROM reports WHERE created_at LIKE ?"
+      ).get(`${today}%`);
+
+      if (existing) {
+        return res.status(200).json({ id: existing.id, file: `/reports/${existing.id}/file` });
+      }
+    }
+
+    const created_at = new Date().toISOString();
     const insert = db.prepare("INSERT INTO reports (path, created_at) VALUES (?, ?)");
     const result = insert.run("", created_at);
     const id = result.lastInsertRowid;
-    console.log("2. Inserted placeholder row, id =", id);
 
     const filePath = `reports/${id}.pdf`;
-    console.log("3. About to render PDF...");
     await renderPdf(filePath);
-    console.log("4. PDF rendered!");
 
     db.prepare("UPDATE reports SET path = ? WHERE id = ?").run(filePath, id);
-    console.log("5. Row updated");
 
     res.status(201).json({ id, file: `/reports/${id}/file` });
-    console.log("6. Response sent");
   } catch (err) {
-    console.error("ERROR:", err);
+    console.error(err);
     res.status(500).json({ error: "Failed to generate report" });
   }
 });
